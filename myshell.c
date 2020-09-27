@@ -35,16 +35,55 @@ int ampersand(char **args) {
 
   for(i = 1; args[i] != NULL; i++) ;
 
-  if(args[i-1][0] == '&') {
+  if(args[i-1][0] == '&' && args[i][0] != '&') {
     free(args[i-1]);
     args[i-1] = NULL;
     return 1;
-  } else {
+  } else {  
     return 0;
   }
   
   return 0;
 }
+
+
+int and_command(char **args, char **command){
+  int i;
+  int j;
+  int k = 0;
+  
+  for(i = 1; args[i] != NULL; i++){
+    if(args[i-1][0] == '&' && args[i][0] == '&'){
+    
+      free(args[i-1]);
+      args[i-1] = NULL;
+      free(args[i]);
+      args[i] = NULL;
+      for(j = i+1; args[j] != NULL;j++){
+        command[k] = args[j];
+        k++;
+      }
+      return 1;
+    }
+  }
+  return 0;
+}
+
+int or_command(char **args){
+  int i;
+  
+  for(i = 1; args[i] != NULL; i++){
+    if(args[i-1][0] == '|' && args[i][0] == '|'){
+      free(args[i-1]);
+      args[i-1] = NULL;
+      free(args[i]);
+      args[i] = NULL;
+      return 1;
+    }
+  }
+  return 0;
+}
+
 
 /* 
  * Check for internal commands
@@ -61,7 +100,8 @@ int internal_command(char **args) {
 /* 
  * Do the command
  */
-int do_command(char **args, int block,
+int do_command(char **args, char **command, int block,
+          int andVal, int orVal,
 	       int input, char *input_filename,
 	       int output, char *output_filename, 
          int append, char *append_filename) {
@@ -98,12 +138,36 @@ int do_command(char **args, int block,
       freopen(append_filename, "a", stdout);
 
     // Execute the command
-    printf("i   %s   i", args[0]);
     result = execvp(args[0], args);
-
+    printf("%d\n",result); 
+    /*
+    if(andVal){
+      int pid;
+       pid = fork();
+        if(pid==-1) {
+           perror("Failed to fork");
+           return 1;
+        }
+        else if(pid ==0){
+           int i;
+      
+            printf("here");
+            
+            for(i = 0; command[i] != NULL; i++){
+                args[i] = command[i];
+                free(command[i]);
+            }
+            result = execvp(args[0], args);
+       }
+    }  
+    else{
+      result = execvp(args[0], args);
+    }
+    */
+    
     exit(-1);
   }
-
+  
   // Wait for the child process to complete, if necessary
   if(block) {
     printf("Waiting for child, pid = %d\n", child_id);
@@ -120,11 +184,9 @@ int append_file(char **args, char **append_filename) {
   for(i = 0; args[i] != NULL; i++) { 
    
     // Look for the >> 
-    //printf("   %c     ", args[i][0]); 
+    
     if(args[i][0] == '>' && args[i+1][0] == '>') { 
-      //free(args[i]); 
-      //i++; 
-      //free(args[i]); 
+      
  
       // Get the filename  
       //printf("%s", args[4]); 
@@ -191,14 +253,14 @@ int redirect_output(char **args, char **output_filename) {
 
       // Get the filename 
       if(args[i+1] != NULL) {
-	*output_filename = args[i+1];
+	        *output_filename = args[i+1];
       } else {
-	return -1;
+	        return -1;
       }
 
       // Adjust the rest of the arguments in the array
       for(j = i; args[j-1] != NULL; j++) {
-	args[j] = args[j+2];
+	        args[j] = args[j+2];
 
       }
 
@@ -214,8 +276,11 @@ int redirect_output(char **args, char **output_filename) {
 main() {
   int i;
   char **args; 
+  char **command;
   int result;
   int block;
+  int andVal;
+  int orVal;
   int output;
   int input;
   int append;
@@ -243,6 +308,15 @@ main() {
 
     // Check for an ampersand
     block = (ampersand(args) == 0);
+
+    //check for double ampersand
+    command = malloc(30 * sizeof(char*));
+    andVal = and_command(args, command);
+    
+    //check for double pipe
+    orVal = or_command(args);
+    
+
 
     // Check for redirected input
     input = redirect_input(args, &input_filename);
@@ -288,10 +362,30 @@ main() {
     }
 
     // Do the command
-    do_command(args, block, 
+    
+      
+    do_command(args, command, block, 
+          andVal, orVal,
 	       input, input_filename, 
 	       output, output_filename,
          append, append_filename);
+  /*       
+    int i;
+    if(andVal == 1){
+      printf("here0");
+      for(i = 0; command[i] != NULL; i++){
+          args[i] = command[i];
+          free(command[i]);
+          printf("here1");
+      }
+        do_command(args, command, block, 
+          andVal, orVal,
+	       input, input_filename, 
+	       output, output_filename,
+         append, append_filename);
+      }
+    */
+    
   }
 }
 
