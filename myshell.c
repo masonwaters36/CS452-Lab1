@@ -11,6 +11,7 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <signal.h>
+#include <stdlib.h>
 
 extern char **getaline();
 
@@ -24,76 +25,7 @@ void sig_handler(int signal) {
   printf("Wait returned %d\n", result);
 }
 
-/*
- * The main shell function
- */ 
-main() {
-  int i;
-  char **args; 
-  int result;
-  int block;
-  int output;
-  int input;
-  char *output_filename;
-  char *input_filename;
 
-  // Set up the signal handler
-  sigset(SIGCHLD, sig_handler);
-
-  // Loop forever
-  while(1) {
-
-    // Print out the prompt and get the input
-    printf("->");
-    args = getaline();
-
-    // No input, continue
-    if(args[0] == NULL)
-      continue;
-
-    // Check for internal shell commands, such as exit
-    if(internal_command(args))
-      continue;
-
-    // Check for an ampersand
-    block = (ampersand(args) == 0);
-
-    // Check for redirected input
-    input = redirect_input(args, &input_filename);
-
-    switch(input) {
-    case -1:
-      printf("Syntax error!\n");
-      continue;
-      break;
-    case 0:
-      break;
-    case 1:
-      printf("Redirecting input from: %s\n", input_filename);
-      break;
-    }
-
-    // Check for redirected output
-    output = redirect_output(args, &output_filename);
-
-    switch(output) {
-    case -1:
-      printf("Syntax error!\n");
-      continue;
-      break;
-    case 0:
-      break;
-    case 1:
-      printf("Redirecting output to: %s\n", output_filename);
-      break;
-    }
-
-    // Do the command
-    do_command(args, block, 
-	       input, input_filename, 
-	       output, output_filename);
-  }
-}
 
 /*
  * Check for ampersand as the last argument
@@ -131,7 +63,8 @@ int internal_command(char **args) {
  */
 int do_command(char **args, int block,
 	       int input, char *input_filename,
-	       int output, char *output_filename) {
+	       int output, char *output_filename, 
+         int append, char *append_filename) {
   
   int result;
   pid_t child_id;
@@ -153,13 +86,19 @@ int do_command(char **args, int block,
   if(child_id == 0) {
 
     // Set up redirection in the child process
+     
+    
     if(input)
       freopen(input_filename, "r", stdin);
 
     if(output)
       freopen(output_filename, "w+", stdout);
+      
+      if(append)
+      freopen(append_filename, "a", stdout);
 
     // Execute the command
+    printf("i   %s   i", args[0]);
     result = execvp(args[0], args);
 
     exit(-1);
@@ -171,6 +110,39 @@ int do_command(char **args, int block,
     result = waitpid(child_id, &status, 0);
   }
 }
+/** 
+ * This is the function for append 
+ */ 
+int append_file(char **args, char **append_filename) { 
+  int i; 
+  int j; 
+   
+  for(i = 0; args[i] != NULL; i++) { 
+   
+    // Look for the >> 
+    //printf("   %c     ", args[i][0]); 
+    if(args[i][0] == '>' && args[i+1][0] == '>') { 
+      //free(args[i]); 
+      //i++; 
+      //free(args[i]); 
+ 
+      // Get the filename  
+      //printf("%s", args[4]); 
+      if(args[i+2] != NULL) { 
+	      *append_filename = args[i+2]; 
+      } else { 
+	      return -1; 
+      } 
+      // Adjust the rest of the arguments in the array 
+      for(j = i; args[j-1] != NULL; j++) { 
+	      args[j] = args[j+2]; 
+       //printf("    %s    ", args[j]);
+      } 
+      return 1; 
+    } 
+  } 
+  return 0; 
+} 
 
 /*
  * Check for input redirection
@@ -227,6 +199,7 @@ int redirect_output(char **args, char **output_filename) {
       // Adjust the rest of the arguments in the array
       for(j = i; args[j-1] != NULL; j++) {
 	args[j] = args[j+2];
+
       }
 
       return 1;
@@ -235,5 +208,90 @@ int redirect_output(char **args, char **output_filename) {
 
   return 0;
 }
+/*
+ * The main shell function
+ */ 
+main() {
+  int i;
+  char **args; 
+  int result;
+  int block;
+  int output;
+  int input;
+  int append;
+  char *output_filename;
+  char *input_filename;
+  char *append_filename; 
 
+  // Set up the signal handler
+  sigset(SIGCHLD, sig_handler);
+
+  // Loop forever
+  while(1) {
+
+    // Print out the prompt and get the input
+    printf("->");
+    args = getaline();
+
+    // No input, continue
+    if(args[0] == NULL)
+      continue;
+
+    // Check for internal shell commands, such as exit
+    if(internal_command(args))
+      continue;
+
+    // Check for an ampersand
+    block = (ampersand(args) == 0);
+
+    // Check for redirected input
+    input = redirect_input(args, &input_filename);
+
+    switch(input) {
+    case -1:
+      printf("Syntax error!\n");
+      continue;
+      break;
+    case 0:
+      break;
+    case 1:
+      printf("Redirecting input from: %s\n", input_filename);
+      break;
+    }
+    //check for appending 
+   append = append_file(args, &append_filename); 
+ 
+    switch(append) { 
+    case -1: 
+      printf("Syntax error!\n"); 
+      continue; 
+      break; 
+    case 0: 
+      break; 
+    case 1: 
+      printf("Appending output to: %s\n", append_filename); 
+      break; 
+    } 
+    // Check for redirected output
+    output = redirect_output(args, &output_filename);
+
+    switch(output) {
+    case -1:
+      printf("Syntax error!\n");
+      continue;
+      break;
+    case 0:
+      break;
+    case 1:
+      printf("Redirecting output to: %s\n", output_filename);
+      break;
+    }
+
+    // Do the command
+    do_command(args, block, 
+	       input, input_filename, 
+	       output, output_filename,
+         append, append_filename);
+  }
+}
 
